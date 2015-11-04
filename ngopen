@@ -1,0 +1,4 @@
+#!/bin/bash
+
+NAILGUN_IP=$(ngip $1)
+xdg-open "http://${NAILGUN_IP}:8000/"

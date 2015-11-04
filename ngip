@@ -1,0 +1,6 @@
+#!/bin/bash
+
+NIC=$(virsh net-info $1_admin | grep "Bridge:" | awk '{print $2}')
+IP=$(ifconfig ${NIC} | grep "inet addr" | cut -d ':' -f 2 | cut -d ' ' -f 1)
+NAILGUN_IP=$(echo $IP | sed 's/.1$/.2/g')
+echo $NAILGUN_IP

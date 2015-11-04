@@ -1,0 +1,80 @@
+#!/usr/bin/env python
+
+import cStringIO
+import glob
+import json
+import pycurl
+import os
+import sys
+
+##########
+# configuration
+# list of jobs from jenkins, they are expected to be URL encoded already
+jobList = [
+    "8.0.all"
+]
+
+build_host = "product-ci.infra.mirantis.net"
+lastBuildAPIURL = "http://" + build_host + "/job/%s/lastSuccessfulBuild/api/json"
+lastBuildArtifactLURL = "http://" + build_host + "/job/%s/lastSuccessfulBuild/artifact/%s"
+localSaveDir = "tmp"
+artifactExtension="iso.data.txt"
+
+##########
+# UDFs
+
+def downloadFile(url,filename):
+    print "==> Downloading File: ",filename," URL: ",url
+    fp = open(filename, "wb")
+    curl = pycurl.Curl()
+    curl.setopt(pycurl.URL, url)
+    curl.setopt(pycurl.WRITEDATA, fp)
+    curl.setopt(pycurl.FOLLOWLOCATION, 1)
+    curl.perform()
+    curl.close()
+    fp.close()
+
+
+###########
+# start
+
+print "Fetching files from Jenkins"
+
+if not os.path.exists(localSaveDir):
+    print "==> Creating Dir %s" % (localSaveDir)
+    os.makedirs(localSaveDir)
+
+for job in jobList:
+    buf = cStringIO.StringIO()
+    jobURL = lastBuildAPIURL % (job)
+    c = pycurl.Curl()
+    c.setopt(c.URL, jobURL)
+    c.setopt(c.WRITEFUNCTION, buf.write)
+    c.setopt(pycurl.FOLLOWLOCATION, 1)
+    c.perform()
+ 
+    jsonstr = buf.getvalue()
+    # print jsonstr
+    jd = json.loads(jsonstr)
+#    print jd
+    buf.close()
+    artifacts = jd['artifacts']
+
+    for art in artifacts:
+        if art['fileName'].find(artifactExtension) > -1:
+            artURL = lastBuildArtifactLURL % (job,art['relativePath'])
+            filename = localSaveDir + "/" + str(art['fileName'])
+            downloadFile(str(artURL), filename)
+            os.chdir("tmp")
+            for data_file in glob.glob("*.iso.data.txt"):
+                with open(data_file, 'r') as f:
+                    for line in f.readlines():
+                        if 'HTTP_LINK' in line:
+                            _, http_link = line.split('=')
+                            os.system('wget -c {0}'.format(http_link))
+                            # os.execute('rm tmp')
+
+
+print "Done"
+buf.close()
+sys.exit(0)
