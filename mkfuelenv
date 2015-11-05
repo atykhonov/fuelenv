@@ -1,0 +1,33 @@
+#!/bin/bash
+
+ENV=$1
+
+# Create directory for environment
+mkdir -p ${ENV}
+
+# Prepare virtual environment
+
+cd ${ENV}
+virtualenv venv
+. venv/bin/activate
+
+# Install `fuel-devops`
+
+pip install git+https://github.com/openstack/fuel-devops.git@2.9.12 --upgrade
+
+# Install `fuel-qa`
+
+git clone --depth 1 https://github.com/openstack/fuel-qa
+cd fuel-qa
+pip install -r ./fuelweb_test/requirements.txt --upgrade
+
+# Define variables for dev environment
+
+export ISO_PATH=/str/development/projects/mirantis/iso/fuel-7.0-301-2015-09-22_20-01-53.iso
+export NODES_COUNT=2
+export ENV_NAME=${ENV}
+export VENV_PATH=`pwd`/../venv/
+
+# Build environment
+
+./utils/jenkins/system_tests.sh -t test -w $(pwd) -j fuelweb_test -i $ISO_PATH -o --group=setup
