@@ -2,55 +2,29 @@
 
 FUEL_ENV=$1
 
+FUEL_ENV_DIR=`pwd`/${FUEL_ENV}
+
 # Create directory for environment
-mkdir -p ${FUEL_ENV}
+mkdir -p ${FUEL_ENV_DIR}
 
 # Prepare virtual environment
 
-cd ${FUEL_ENV}
+cd ${FUEL_ENV_DIR}
 virtualenv ${FUEL_ENV}
-. ${FUEL_ENV}/bin/activate
+. ${FUEL_ENV_DIR}/${FUEL_ENV}/bin/activate
 
-FUEL_FUNCTIONS="
-
-dos.py start ${FUEL_ENV}
-
-ngip() {
-    NIC=\$(virsh net-info \$1_admin | grep 'Bridge:' | awk '{print \$2}')
-    IP=\$(ifconfig \${NIC} | grep 'inet addr' | cut -d ':' -f 2 | cut -d ' ' -f 1)
-    echo \$IP | sed 's/.1\$/.2/g'
-}
-
-ngopen() {
-    NAILGUN_IP=\$(ngip \"${FUEL_ENV}\")
-    xdg-open \"http://\${NAILGUN_IP}:8000/\"
-}
-
-fuelenv_deactivate() {
-    deactivate
-    dos.py destroy ${FUEL_ENV}
-}
-
-fssh() {
-    SSH_EXPECT_LOGIN=\"spawn ssh root@\$(ngip \"${FUEL_ENV}\")
-expect \"Password:\"
-send \"r00tme\"
-interact\"
-    echo \"\$SSH_EXPECT_LOGIN\" | expect
-}
-
-fdockerctl() {
-fssh dockerctl \"\$1\"
-}
-
-alias fuel=\"SERVER_ADDRESS=\$(ngip \${FUEL_ENV})\" fuel
-alias fuel2=\"SERVER_ADDRESS=\$(ngip \${FUEL_ENV})\" fuel2"
-
-echo "$FUEL_FUNCTIONS" >> ${FUEL_ENV}/bin/activate
 
 # Install `fuel-devops`
 
 pip install git+https://github.com/openstack/fuel-devops.git@2.9.12 --upgrade
+
+# Install `python-fuelclient`
+
+git clone --depth 1 https://github.com/openstack/python-fuelclient
+cd python-fuelclient
+pip install -r requirements.txt
+python setup.py install
+cd ..
 
 # Checkout `fuel-web`
 
@@ -61,16 +35,62 @@ pip install git+https://github.com/openstack/fuel-devops.git@2.9.12 --upgrade
 git clone --depth 1 https://github.com/openstack/fuel-qa
 cd fuel-qa
 pip install -r ./fuelweb_test/requirements.txt --upgrade
-cd ..
 
 # Build environment
 
-FUEL_WORKSPACE=~/.fuelenv/
+FUEL_WORKSPACE=`pwd`/${FUEL_ENV}
 mkdir -p ${FUEL_WORKSPACE}
+WORKSPACE=$FUEL_WORKSPACE
+export WORKSPACE
 # FUEL_ISO_DIR=$FUEL_WORKSPACE/iso
 # mkdir -p $FUEL_ISO_DIR
 # export ISO_DIR=$FUEL_ISO_DIR
 
-# ./fuel-qa/utils/jenkins/system_tests.sh -t test -j fuelweb_test -i $ISO_PATH -o --group=setup
-./fuel-qa/utils/jenkins/system_tests.sh -t iso -j fuelweb_test -i $2 -r -V `pwd`/${FUEL_ENV}/ -w ${FUEL_WORKSPACE} -o --group=setup
-./fuel-qa/utils/jenkins/system_tests.sh -e ${FUEL_ENV} -t test -j fuelweb_test -i $2 -V `pwd`/${FUEL_ENV}/ -w ${FUEL_WORKSPACE} -o --group=setup
+# ./utils/jenkins/system_tests.sh -t test -j fuelweb_test -i $2 -V `pwd`/../${FUEL_ENV}/ -o --group=setup
+# ./fuel-qa/utils/jenkins/system_tests.sh -t iso -j fuelweb_test -i $2 -r -V `pwd`/${FUEL_ENV}/ -w ${FUEL_WORKSPACE} -o --group=setup
+# ./fuel-qa/utils/jenkins/system_tests.sh -e ${FUEL_ENV} -t test -j fuelweb_test -i $2 -V `pwd`/${FUEL_ENV} -w ${FUEL_WORKSPACE} -o --group=setup
+
+cd ${FUEL_ENV_DIR}
+
+FUEL_FUNCTIONS="
+
+dos.py start ${FUEL_ENV}
+sleep 30
+
+mip() {
+    NIC=\$(sudo virsh net-info ${FUEL_ENV}_admin | grep 'Bridge:' | awk '{print \$2}')
+    IP=\$(ifconfig \${NIC} | grep 'inet' | awk '{print \$2}')
+    echo \$IP | sed 's/.1\$/.2/g'
+}
+
+openwebapp() {
+    NAILGUN_IP=\$(mip)
+    xdg-open \"http://\${NAILGUN_IP}:8000/\"
+}
+
+fuelenv_deactivate() {
+    dos.py destroy ${FUEL_ENV}
+    deactivate
+}
+
+mssh() {
+    ssh root@\$(mip) \$1
+}
+
+sshinit() {
+    ssh-copy-id root@\$(mip)
+}
+
+mdc() {
+    mssh \"dockerctl '\$1'\"
+}
+
+alias fuel=\"SERVER_ADDRESS=\$(mip) fuel\"
+alias fuel2=\"SERVER_ADDRESS=\$(mip) fuel2\"
+
+ssh-copy-id root@\$(mip)
+"
+
+
+
+echo "$FUEL_FUNCTIONS" >> ${FUEL_ENV}/bin/activate
