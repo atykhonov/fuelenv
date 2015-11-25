@@ -38,4 +38,5 @@ os.environ['VENV_PATH'] = virtual_env_dir
 
 os.chdir('fuel-qa')
 
-os.system('./utils/jenkins/system_tests.sh -t test -w {0} -j fuelweb_test -i {1} -o --group=setup'.format(os.getcwd(), args.iso))
+os.system('./utils/jenkins/system_tests.sh -t test -w {0} -j fuelweb_test'
+          ' -i {1} -o --group=setup'.format(os.getcwd(), args.iso))
