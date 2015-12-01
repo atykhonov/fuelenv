@@ -24,9 +24,8 @@ def download_artifact(url, filename):
     fp.close()
 
 
-suffixes = ['B', 'K', 'M', 'G']
-
 def human_size(nbytes):
+    suffixes = ['B', 'K', 'M', 'G']
     rank = int((math.log10(nbytes)) / 3)
     rank = min(rank, len(suffixes) - 1)
     human = nbytes / (1024.0 ** rank)
@@ -41,74 +40,110 @@ def download_iso(url, filename):
     file_size = int(meta.getheaders("Content-Length")[0])
     print "fget: Downloading: %s (%s)" % (
         os.path.basename(filename), human_size(file_size))
-
     file_size_dl = 0
     block_sz = 8192
     while True:
         buffer = u.read(block_sz)
         if not buffer:
             break
-
         file_size_dl += len(buffer)
         f.write(buffer)
         status = r"%10d  [%3.2f%%]" % (file_size_dl, file_size_dl * 100. / file_size)
         status = status + chr(8)*(len(status)+1)
         print status,
-
     f.close()
 
 
-fuel_dir = os.path.expanduser(os.path.join('~', '.config', 'fuel'))
-artifacts_dir = os.path.join(fuel_dir, 'artifacts')
+def request(url):
+    buf = cStringIO.StringIO()
+    c = pycurl.Curl()
+    c.setopt(c.URL, url)
+    c.setopt(c.WRITEFUNCTION, buf.write)
+    c.setopt(pycurl.FOLLOWLOCATION, 1)
+    c.perform()
+    jd = json.loads(buf.getvalue())
+    buf.close()
+    return jd
 
-if not os.path.isdir(artifacts_dir):
-    os.makedirs(artifacts_dir)
+
+def get_build(url, job, build, author):
+    if author:
+        job_url_template = "{0}/job/{1}/"
+        job_url = job_url_template.format(url, job) + 'api/json'
+        response = request(job_url)
+        for build_json in response['builds']:
+            resp = request(get_build_url(url, job, build_json['number']))
+            causes = None
+            for i in range(3):
+                causes = resp['actions'][i].get('causes')
+                if causes:
+                    break
+            userId = causes[0]['userId']
+            if userId == author and resp['result'] == 'SUCCESS':
+                return resp['number']
+        else:
+            raise Exception('Build not found: no build was '
+                            'found for the author \'{0}\''.format(author))
+    return build if build else 'lastSuccessfulBuild'
+
+
+def get_build_url(url, job, build):
+    job_url_template = "{0}/job/{1}/"
+    build_url_template = job_url_template + "{2}/{3}"
+    build_url = build_url_template.format(url, job, build, 'api/json')
+    return build_url
+
+
+fget_dir = os.path.expanduser(os.path.join('~', '.cache', 'fget'))
 
 parser = argparse.ArgumentParser(description='fuel artifacts downloader')
-parser.add_argument('-j', '--job', help='Jenkins job')
+parser.add_argument('-j', '--job', required=True, help='Jenkins job')
 parser.add_argument('-b', '--build', help='Jenkins build')
 parser.add_argument(
     '-i', '--iso', action='store_true', help='Download iso-file')
 parser.add_argument(
-    '-r', '--url', required=True,
+    '-u', '--url', required=True,
     dest='jenkins_url', help='Jenkins URL')
-parser.add_argument('-u', '--username', help='Jenkins username')
-parser.add_argument('-p', '--password', help='Jenkins password')
+parser.add_argument('-a', '--author', help='Author of a build')
 parser.add_argument(
-    '-o', '--output', default=artifacts_dir,
-    help='Output dir for the artifacts')
+    '-o', '--output', help='Output dir for the artifacts')
 
 args = parser.parse_args()
 
+artifacts_dir = os.path.join(fget_dir, args.job)
+
+if not os.path.isdir(artifacts_dir):
+    os.makedirs(artifacts_dir)
+
 url = args.jenkins_url.strip('/')
-build = args.build if args.build else 'lastSuccessfulBuild'
-url_template = "{0}/job/{1}/{2}/{3}"
-build_url = url_template.format(url, args.job, build, 'api/json')
-artifacts_url = url_template.format(url, args.job, build, 'artifact/{0}')
 
-buf = cStringIO.StringIO()
-c = pycurl.Curl()
-c.setopt(c.URL, build_url)
-c.setopt(c.WRITEFUNCTION, buf.write)
-c.setopt(pycurl.FOLLOWLOCATION, 1)
-c.perform()
+build = get_build(url, args.job, args.build, args.author)
+# build_url = build_url_template.format(url, args.job, build, 'api/json')
 
-jd = json.loads(buf.getvalue())
-buf.close()
+job_url_template = "{0}/job/{1}/"
+build_url_template = job_url_template + "{2}/{3}"
+artifacts_url = build_url_template.format(url, args.job, build, 'artifact/{0}')
+
+# build = get_build(args, url)
+
+jd = request(get_build_url(url, args.job, build))
 artifacts = jd['artifacts']
 
-build_dir = os.path.join(artifacts_dir, jd['id'])
+build_dir = os.path.join(artifacts_dir, str(jd['number']))
 if not os.path.exists(build_dir):
-    print "fget: Creating build directory %s" % (build_dir, )
+    print "fget: Creating directory: {0}".format(build_dir)
     os.makedirs(build_dir)
 
-print "fget: Downloading artifacts from Jenkins to {0}".format(build_dir)
-
-for artifact in artifacts:
-    artifact_url = artifacts_url.format(artifact['relativePath'])
-    filename = os.path.join(build_dir, artifact['fileName'])
-    print "fget: Downloading artifact: {0}".format(os.path.basename(filename))
-    download_artifact(artifact_url, filename)
+if artifacts:
+    print "fget: Downloading artifacts from Jenkins to {0}".format(build_dir)
+    for artifact in artifacts:
+        artifact_url = artifacts_url.format(artifact['relativePath'])
+        filename = os.path.join(build_dir, artifact['fileName'])
+        print "fget: Downloading artifact: {0}".format(os.path.basename(filename))
+        download_artifact(artifact_url, filename)
+else:
+    print 'No artifacts were found.'
+    sys.exit(1)
 
 if args.iso:
     glob_path = os.path.join(build_dir, '*.iso.data.txt')
@@ -125,4 +160,3 @@ if args.iso:
 
 # TODO:
 # - introduce main method
-# 
