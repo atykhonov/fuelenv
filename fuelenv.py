@@ -32,7 +32,7 @@ install_fuel_client()
 # build iso
 
 os.environ['ISO_PATH'] = args.iso
-os.environ['NODES_COUNT'] = '4'
+os.environ['NODES_COUNT'] = '6'
 os.environ['ENV_NAME'] = args.name
 os.environ['VENV_PATH'] = virtual_env_dir
 

@@ -38,13 +38,20 @@ pip install -r ./fuelweb_test/requirements.txt --upgrade
 
 # Build environment
 
-FUEL_WORKSPACE=`pwd`/${FUEL_ENV}
-mkdir -p ${FUEL_WORKSPACE}
-WORKSPACE=$FUEL_WORKSPACE
-export WORKSPACE
+# FUEL_WORKSPACE=`pwd`/${FUEL_ENV}
+# mkdir -p ${FUEL_WORKSPACE}
+# WORKSPACE=$FUEL_WORKSPACE
+# export WORKSPACE
 # FUEL_ISO_DIR=$FUEL_WORKSPACE/iso
 # mkdir -p $FUEL_ISO_DIR
 # export ISO_DIR=$FUEL_ISO_DIR
+
+export NODES_COUNT=4
+export ENV_NAME=${FUEL_ENV}
+export VENV_PATH=<path>/fuel-devops-venv
+export VENV_PATH=${FUEL_ENV_DIR}/${FUEL_ENV}
+
+./utils/jenkins/system_tests.sh -t test -w $(pwd) -j fuelweb_test -i $2 -o --group=setup
 
 # ./utils/jenkins/system_tests.sh -t test -j fuelweb_test -i $2 -V `pwd`/../${FUEL_ENV}/ -o --group=setup
 # ./fuel-qa/utils/jenkins/system_tests.sh -t iso -j fuelweb_test -i $2 -r -V `pwd`/${FUEL_ENV}/ -w ${FUEL_WORKSPACE} -o --group=setup
@@ -59,7 +66,7 @@ sleep 30
 
 mip() {
     NIC=\$(sudo virsh net-info ${FUEL_ENV}_admin | grep 'Bridge:' | awk '{print \$2}')
-    IP=\$(ifconfig \${NIC} | grep 'inet' | awk '{print \$2}')
+    IP=\$(ifconfig \${NIC} | grep 'inet' | awk '{print \$2}' | cut -d: -f2)
     echo \$IP | sed 's/.1\$/.2/g'
 }
 
